@@ -1,4 +1,5 @@
 from pymavlink import mavutil
+from pymavlink import mavftp
 from pathlib import Path
 import time 
 import subprocess
@@ -6,13 +7,13 @@ import os
 from dotenv import load_dotenv
 
 # setup 
+load_dotenv()
 DEVICE = '/dev/ttyACM0'
 BAUD = 115200
 
 LOG_DIR = Path(__file__).resolve().parent / "flight-logs"
 LOG_DIR.mkdir(parents = True, exist_ok = True)
 
-load_dotenv()
 INGEST_API_KEY = os.getenv("INGEST_API_KEY")
 UPLOAD_URL = os.getenv("UPLOAD_URL")
 
@@ -20,32 +21,18 @@ UPLOAD_URL = os.getenv("UPLOAD_URL")
 def connect_to_pixhawk():
     master = mavutil.mavlink_connection(DEVICE, BAUD)
 
-    master.target_system = 1
-    master.target_component = 1
+    master.wait_heartbeat()
 
-    print("Sending heartbeat")
-    master.mav.heartbeat_send(
-        mavutil.mavlink.MAV_TYPE_GCS,
-        mavutil.mavlink.MAV_AUTOPILOT_INVALID, 0, 0, 0
-    )
+    ftp = mavftp(master)
 
     # makes sure it doesn't skip first command 
     time.sleep(1) 
     print("Requesting log list")
 
-    master.mav.log_request_list_send(
-        master.target_system,
-        master.target_component, 
-        0, 
-        0xFFFF
-    )
+    files = ftp.list_directory("/APM/LOGS")
 
-    while True:
-        msg = master.recv_match(type='LOG_ENTRY', blocking = True, timeout = 5)
-        if not msg:
-            print("No logs found")
-            break
-        print(f"Log ID: {msg.id}, Size {msg.size} bytes, Time: {msg.time_utc}")
+    for f in files:
+        print(f.name, f.size)
 
 
 
