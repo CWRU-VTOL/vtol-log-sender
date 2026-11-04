@@ -34,11 +34,39 @@ def connect_to_pixhawk():
     result = ftp.cmd_list(["/APM/LOGS"])
 
     if result.return_code == mavftp.FtpError.Success:
-        for entry in ftp.list_result:
-            type_str = "DIR" if entry.is_dir else "FILE"
-            print(f"[{type_str}] {entry.name} - {entry.size_b} bytes")
+        logs = [
+            entry for entry in ftp.list_result
+            if not entry.is_dir and entry.name.upper().endswith(".BIN")
+        ]
+
+        if not logs: 
+            print("No logs found")
+            return None
+        else:
+            '''
+            logs are usually numbered 00000001.BIN, 00000002.BIN, etc.
+            gets the largest one from the stem 
+            '''
+            latest = max(logs, key=lambda x: int(Path(x.name).stem))
+            print(f"Latest log: {latest.name}")
+
+        remote_path = f"/APM/LOGS/{latest.name}"
+        local_path = LOG_DIR / latest.name
+
+        # if exists already, don't upload it 
+        marker = local_path.with_suffix(".uploaded")
+
+        if marker.exists():
+            print("Latest log already uploaded")
+            return None
+        
+        ftp.cmd_get([remote_path, str(local_path)])
+        ftp.process_ftp_reply("OpenFileRO", timeout=15)
+
+        return local_path
     else:
-        print(f"Failed to list logs: {result.return_code}")
+        print("Error with requesting log list")
+        return None
 
 
 def upload_log(file_path, target_url, user_agent, api_key=None):
@@ -51,7 +79,7 @@ def upload_log(file_path, target_url, user_agent, api_key=None):
         "-F", f"file=@{file_path}", 
         target_url 
     ]
-    if api_key != None:
+    if api_key is not None:
         stdin_config = f'header = "Authorization: Bearer {api_key}"\n'
 
     result = subprocess.run(
@@ -70,4 +98,14 @@ def upload_log(file_path, target_url, user_agent, api_key=None):
         return None
 
 if __name__ == '__main__':
-    connect_to_pixhawk()
+    path_of_log = connect_to_pixhawk()
+    if (path_of_log):
+        code = upload_log(path_of_log, 
+                          UPLOAD_URL,
+                          "log-reader-deploy/1.0",
+                          INGEST_API_KEY)
+        if code is not None:
+            marker = path_of_log.with_suffix(".uploaded")
+            marker.touch()
+            print("Upload successful")
+        print(code)
