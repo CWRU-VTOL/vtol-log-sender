@@ -23,17 +23,22 @@ def connect_to_pixhawk():
 
     master.wait_heartbeat()
 
-    ftp = mavftp(master)
+    ftp = mavftp.MAVFTP(master,
+			target_system = master.target_system,
+			target_component = master.target_component)
 
     # makes sure it doesn't skip first command 
     time.sleep(1) 
     print("Requesting log list")
 
-    files = ftp.list_directory("/APM/LOGS")
+    result = ftp.cmd_list(["/APM/LOGS"])
 
-    for f in files:
-        print(f.name, f.size)
-
+    if result.return_code == mavftp.FtpError.Success:
+        for entry in ftp.list_result:
+            type_str = "DIR" if entry.is_dir else "FILE"
+            print(f"[{type_str}] {entry.name} - {entry.size_b} bytes")
+    else:
+        print(f"Failed to list logs: {result.return_code}")
 
 
 def upload_log(file_path, target_url, user_agent, api_key=None):
@@ -64,10 +69,5 @@ def upload_log(file_path, target_url, user_agent, api_key=None):
         print(f"Stderr Trace: {result.stderr}")
         return None
 
-def main():
-    connect_to_pixhawk()
-
-
-
 if __name__ == '__main__':
-    main()
+    connect_to_pixhawk()
