@@ -1,0 +1,19 @@
+services:
+  log-sender:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: vtol-log-sender
+    restart: unless-stopped
+
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+
+    env_file:
+      - .env
+
+    volumes:
+      - ./flight-logs:/app/flight-logs
+
+    stdin_open: true
+    tty: true
